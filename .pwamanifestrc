@@ -1,0 +1,14 @@
+{
+  "name": "我的扫描",
+  "short_name": "我的扫描",
+  "disabled": true,
+  "theme": "black",
+  "display": "standalone",
+  "iconGenOpts": {
+    "baseIcon": "src/icon.png",
+    "genFavicons": true
+  },
+  "production": {
+    "disabled": false
+  }
+}

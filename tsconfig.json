@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "node",
+    "noEmit": true,
+    "skipLibCheck": true
+  },
+  "include": ["src"],
+  "exclude": ["src/workers/**/*", "src/service.ts"]
+}
