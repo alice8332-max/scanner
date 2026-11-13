@@ -15,13 +15,33 @@ export const toImage = async (img: Blob) => {
 const sharedCanvas = document.createElement('canvas');
 const sharedCtx = sharedCanvas.getContext('2d')!
 
-export const getData = async (img: ImageBitmap | HTMLImageElement, transfer?: boolean) => {
-  if (sharedCanvas['transferControlToOffscreen' as 'getContext']) {
-    return bitmapToData(img instanceof ImageBitmap ? img : await createImageBitmap(img), transfer);
+type ImageSource = ImageBitmap | HTMLImageElement | HTMLCanvasElement;
+
+export const getData = async (img: ImageSource, transfer?: boolean, maxSide?: number) => {
+  let source: ImageSource = img;
+  let width = img.width;
+  let height = img.height;
+  if (maxSide && Math.max(width, height) > maxSide) {
+    const ratio = maxSide / Math.max(width, height);
+    width = Math.max(1, Math.round(width * ratio));
+    height = Math.max(1, Math.round(height * ratio));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+    source = canvas;
+    if (img instanceof ImageBitmap) img.close();
   }
-  sharedCanvas.width = img.width, sharedCanvas.height = img.height;
-  sharedCtx.drawImage(img, 0, 0);
-  return sharedCtx.getImageData(0, 0, img.width, img.height);
+  if (sharedCanvas['transferControlToOffscreen' as 'getContext']) {
+    const bitmap = source instanceof ImageBitmap ? source : await createImageBitmap(source);
+    return bitmapToData(bitmap, transfer);
+  }
+  sharedCanvas.width = width;
+  sharedCanvas.height = height;
+  sharedCtx.drawImage(source, 0, 0);
+  const data = sharedCtx.getImageData(0, 0, width, height);
+  if (source instanceof ImageBitmap) source.close();
+  return data;
 }
 
 export const download = (file: Blob, name: string) => {

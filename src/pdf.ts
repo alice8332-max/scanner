@@ -107,7 +107,8 @@ export const toPDF = async (images: ImageData[]) => {
   comment('PDF-1.4');
     // 4 byte binary comment, as suggested by spec
   comment('\x90\x85\xfa\xe3');
-  const pages = await Promise.all(images.map(async img => {
+
+  const prepared = await Promise.all(images.map(async img => {
     const canvas = document.createElement('canvas');
     canvas.width = img.width;
     canvas.height = img.height;
@@ -115,6 +116,15 @@ export const toPDF = async (images: ImageData[]) => {
     const jpeg = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
     if (!jpeg) throw new Error('无法生成 JPEG');
     const jpegData = new Uint8Array(await readFile.call(jpeg));
+    // A4 height
+    const height = 842;
+    const width = height * img.width / img.height;
+    return { jpegData, imgWidth: img.width, imgHeight: img.height, width, height };
+  }));
+
+  const pageRootId = prepared.length * 3 + 1;
+  const pageIds: number[] = [];
+  for (const { jpegData, imgWidth, imgHeight, width, height } of prepared) {
     const image = object(() => {
       stream({
         Type() {
@@ -124,10 +134,10 @@ export const toPDF = async (images: ImageData[]) => {
           name('Image');
         },
         Width() {
-          number(img.width);
+          number(imgWidth);
         },
         Height() {
-          number(img.height);
+          number(imgHeight);
         },
         ColorSpace() {
           name('DeviceRGB');
@@ -143,9 +153,6 @@ export const toPDF = async (images: ImageData[]) => {
         }
       }, jpegData);
     });
-    // A4 height
-    const height = 842;
-    const width = height * img.width / img.height;
     const contents = object(() => {
       const result = `${width} 0 0 ${height} 0 0 cm /I Do`;
       stream({
@@ -162,7 +169,7 @@ export const toPDF = async (images: ImageData[]) => {
           name('Page')
         },
         Parent() {
-          reference(offsets.length + 1);
+          reference(pageRootId);
         },
         Resources() {
           dict({
@@ -188,8 +195,8 @@ export const toPDF = async (images: ImageData[]) => {
         }
       });
     });
-    return page;
-  }));
+    pageIds.push(page);
+  }
 
   const pageRoot = object(() => {
     dict({
@@ -198,13 +205,13 @@ export const toPDF = async (images: ImageData[]) => {
       },
       Kids() {
         array(() => {
-          for (const page of pages) {
+          for (const page of pageIds) {
             reference(page);
           }
         });
       },
       Count() {
-        number(pages.length);
+        number(pageIds.length);
       }
     })
   });

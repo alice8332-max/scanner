@@ -4,10 +4,9 @@ const newWorker = () => new Worker(new URL('./workers/process.ts', import.meta.u
 
 const processWorkers: Worker[] = [];
 
-if (navigator.hardwareConcurrency) {
-  for (let i = 1; i < navigator.hardwareConcurrency; ++i) {
-    processWorkers.push(newWorker());
-  }
+const workerCount = Math.min(2, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
+for (let i = 0; i < workerCount; ++i) {
+  processWorkers.push(newWorker());
 }
 
 const getWorker = () => processWorkers.pop() || newWorker();
