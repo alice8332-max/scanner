@@ -1,4 +1,4 @@
-import { findDocument, extractDocument, Point, Quad } from './process';
+import { extractDocument, Point, Quad } from './process';
 import { toPDF } from './pdf';
 import { toImage, getData, download } from './io';
 import { ProspectivePage, getFile, setFile } from './db';
@@ -17,7 +17,6 @@ const modal = document.getElementById('modal') as HTMLDivElement;
 const captures = document.getElementById('captures') as HTMLDivElement;
 const preview = document.getElementById('preview') as HTMLVideoElement;
 const previewCrop = document.getElementById('preview-crop') as HTMLDivElement;
-const previewDoc = document.getElementById('preview-doc') as HTMLDivElement;
 const bottomWrapper = document.getElementById('bottom-wrapper') as HTMLDivElement;
 const topWrapper = document.getElementById('top-wrapper') as HTMLDivElement;
 const selectWrapper = document.getElementById('camera-select-wrapper') as HTMLDivElement;
@@ -55,11 +54,16 @@ const cameraClosed = document.getElementById('camera-closed') as HTMLDivElement;
 const cameraResume = document.getElementById('camera-resume') as HTMLButtonElement;
 const cameraLibrary = document.getElementById('camera-library') as HTMLButtonElement;
 const reviewModal = document.getElementById('review-modal') as HTMLDivElement;
-const reviewCount = document.getElementById('review-count') as HTMLDivElement;
-const reviewList = document.getElementById('review-list') as HTMLDivElement;
+const reviewImage = document.getElementById('review-image') as HTMLDivElement;
+const reviewPrev = document.getElementById('review-prev') as HTMLButtonElement;
+const reviewNext = document.getElementById('review-next') as HTMLButtonElement;
+const reviewCounter = document.getElementById('review-counter') as HTMLDivElement;
 const reviewStatus = document.getElementById('review-status') as HTMLDivElement;
 const reviewClose = document.getElementById('review-close') as HTMLButtonElement;
-const reviewContinue = document.getElementById('review-continue') as HTMLButtonElement;
+const reviewEdit = document.getElementById('review-edit') as HTMLButtonElement;
+const reviewDelete = document.getElementById('review-delete') as HTMLButtonElement;
+const reviewMoveUp = document.getElementById('review-move-up') as HTMLButtonElement;
+const reviewMoveDown = document.getElementById('review-move-down') as HTMLButtonElement;
 const reviewGenerate = document.getElementById('review-generate') as HTMLButtonElement;
 const modalBottomWrapper = document.getElementById('modal-bottom-wrapper') as HTMLDivElement;
 const modalCancelWrapper = document.getElementById('modal-cancel-wrapper') as HTMLDivElement;
@@ -261,7 +265,7 @@ const adjustLine = (elem: HTMLDivElement, a: Point, b: Point, scale: number) => 
   elem.style.transform = `rotate(${Math.atan2(b.y - a.y, b.x - a.x)}rad)`;
 }
 
-const preprocessPhoto = async (src: Blob | ImageBitmap) => {
+const preprocessPhoto = async (src: Blob | ImageBitmap): Promise<Page> => {
   let img: HTMLImageElement | HTMLCanvasElement, data: ImageData;
   if (src instanceof Blob) {
     const image = await toImage(src);
@@ -275,22 +279,12 @@ const preprocessPhoto = async (src: Blob | ImageBitmap) => {
     img = cnv;
     data = await getData(src, true);
   }
-  const quad = await findDocument(data) || {
+  const quad = {
     a: { x: 0, y: data.height },
     b: { x: 0, y: 0 },
     c: { x: data.width, y: 0 },
     d: { x: data.width, y: data.height }
   };
-  const clampPoint = (a: Point) => {
-    if (a.x < 0) a.x = 0;
-    else if (a.x > data.width) a.x = data.width;
-    if (a.y < 0) a.y = 0;
-    else if (a.y > data.height) a.y = data.height;
-  };
-  clampPoint(quad.a);
-  clampPoint(quad.b);
-  clampPoint(quad.c);
-  clampPoint(quad.d);
   return { img, data, quad };
 };
 
@@ -515,8 +509,10 @@ const makeThumbnail = (page: Page) => {
   return canvas;
 };
 
+let reviewIndex = 0;
+
 const updatePagesUI = () => {
-  done.textContent = `生成 PDF · ${pages.length} 页`;
+  done.textContent = pages.length ? `预览 PDF · ${pages.length} 页` : '预览 PDF';
   done.disabled = pages.length === 0;
   doneWrapper.classList.toggle('disabled', pages.length === 0);
   while (pastWrapper.lastChild != past) {
@@ -531,63 +527,42 @@ const updatePagesUI = () => {
   }
 };
 
+const makePreview = (page: Page) => {
+  const maxSide = 1600;
+  const ratio = Math.min(1, maxSide / Math.max(page.data.width, page.data.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(page.data.width * ratio));
+  canvas.height = Math.max(1, Math.round(page.data.height * ratio));
+  canvas.getContext('2d')!.drawImage(page.img, 0, 0, canvas.width, canvas.height);
+  return canvas;
+};
+
 const renderReview = () => {
-  reviewCount.textContent = String(pages.length);
-  reviewList.replaceChildren();
-  reviewGenerate.disabled = pages.length === 0 || generating;
-  if (!pages.length) {
-    const empty = document.createElement('div');
-    empty.className = 'review-empty';
-    empty.textContent = '还没有页面，先拍一张吧。';
-    reviewList.appendChild(empty);
+  const total = pages.length;
+  if (!total) {
+    closeReview();
     return;
   }
-  pages.forEach((page, index) => {
-    const item = document.createElement('div');
-    item.className = 'review-page';
+  if (reviewIndex >= total) reviewIndex = total - 1;
+  if (reviewIndex < 0) reviewIndex = 0;
+  reviewCounter.textContent = `第 ${reviewIndex + 1} / ${total} 页`;
+  reviewImage.replaceChildren(makePreview(pages[reviewIndex]));
+  reviewPrev.disabled = generating || reviewIndex === 0;
+  reviewNext.disabled = generating || reviewIndex === total - 1;
+  reviewMoveUp.disabled = generating || reviewIndex === 0;
+  reviewMoveDown.disabled = generating || reviewIndex === total - 1;
+  reviewEdit.disabled = generating;
+  reviewDelete.disabled = generating;
+  reviewClose.disabled = generating;
+  reviewGenerate.disabled = generating;
+};
 
-    const thumb = document.createElement('button');
-    thumb.type = 'button';
-    thumb.className = 'review-thumb';
-    thumb.title = '重新调整四角';
-    thumb.appendChild(makeThumbnail(page));
-    thumb.onclick = () => editPage(index);
-
-    const main = document.createElement('div');
-    main.className = 'review-page-main';
-    const title = document.createElement('div');
-    title.className = 'review-page-title';
-    title.textContent = `第 ${index + 1} 页`;
-    const meta = document.createElement('div');
-    meta.className = 'review-page-meta';
-    meta.textContent = `${page.data.width} × ${page.data.height}`;
-
-    const actions = document.createElement('div');
-    actions.className = 'review-page-actions';
-    const up = document.createElement('button');
-    up.type = 'button';
-    up.className = 'review-btn';
-    up.textContent = '上移';
-    up.disabled = generating || index === 0;
-    up.onclick = () => movePage(index, -1);
-    const down = document.createElement('button');
-    down.type = 'button';
-    down.className = 'review-btn';
-    down.textContent = '下移';
-    down.disabled = generating || index === pages.length - 1;
-    down.onclick = () => movePage(index, 1);
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'review-btn danger';
-    del.textContent = '删除';
-    del.disabled = generating;
-    del.onclick = () => deletePage(index);
-    actions.append(up, down, del);
-
-    main.append(title, meta, actions);
-    item.append(thumb, main);
-    reviewList.appendChild(item);
-  });
+const showPage = (delta: number) => {
+  if (generating) return;
+  const next = reviewIndex + delta;
+  if (next < 0 || next >= pages.length) return;
+  reviewIndex = next;
+  renderReview();
 };
 
 const openReview = () => {
@@ -595,14 +570,16 @@ const openReview = () => {
     showToast('还没有页面，先拍一张吧');
     return;
   }
+  reviewIndex = 0;
   if (!generating) reviewStatus.textContent = '';
-  renderReview();
   reviewModal.style.display = 'flex';
+  renderReview();
 };
 
 const closeReview = () => {
   reviewModal.style.display = 'none';
-  reviewStatus.textContent = '';
+  if (!generating) reviewStatus.textContent = '';
+  reviewImage.replaceChildren();
 };
 
 const movePage = (index: number, delta: number) => {
@@ -611,6 +588,7 @@ const movePage = (index: number, delta: number) => {
   if (next < 0 || next >= pages.length) return;
   const [page] = pages.splice(index, 1);
   pages.splice(next, 0, page);
+  reviewIndex = next;
   renderReview();
   updatePagesUI();
 };
@@ -624,8 +602,9 @@ const deletePage = (index: number) => {
     showToast('已删除全部页面');
     return;
   }
+  if (reviewIndex >= pages.length) reviewIndex = pages.length - 1;
   renderReview();
-  showToast('已删除该页');
+  showToast('已删除本页');
 };
 
 const editPage = async (index: number) => {
@@ -637,6 +616,7 @@ const editPage = async (index: number) => {
     const confirmed = await processPhotos([page]);
     if (confirmed && confirmed[0]) {
       pages[index] = confirmed[0];
+      reviewIndex = index;
       showToast(`已更新第 ${index + 1} 页`);
     }
   } catch (err) {
@@ -644,8 +624,8 @@ const editPage = async (index: number) => {
     showToast('编辑失败，请重试');
   } finally {
     if (pages.length) {
-      renderReview();
       reviewModal.style.display = 'flex';
+      renderReview();
     }
     updatePagesUI();
   }
@@ -654,11 +634,8 @@ const editPage = async (index: number) => {
 const generatePDF = async () => {
   if (generating || !pages.length) return;
   generating = true;
-  reviewGenerate.disabled = true;
-  reviewClose.disabled = true;
-  reviewContinue.disabled = true;
-  reviewList.style.pointerEvents = 'none';
   reviewStatus.textContent = '';
+  renderReview();
   try {
     const extracted: ImageData[] = [];
     for (let i = 0; i < pages.length; ++i) {
@@ -698,11 +675,8 @@ const generatePDF = async () => {
     showToast('生成 PDF 失败，请重试');
   } finally {
     generating = false;
-    reviewGenerate.disabled = pages.length === 0;
-    reviewClose.disabled = false;
-    reviewContinue.disabled = false;
-    reviewList.style.pointerEvents = '';
     updatePagesUI();
+    if (reviewModal.style.display === 'flex') renderReview();
   }
 };
 
@@ -804,62 +778,6 @@ const startStream = async (device?: string): Promise<StreamHandle> => {
   };
   quality.addEventListener('click', onQualityClick);
 
-  let docPreviewTimeout = -1;
-  let detecting = false;
-  let newElems: Node[] = [];
-  const clearNewElems = () => {
-    for (const elem of newElems) {
-      previewDoc.removeChild(elem);
-    }
-    newElems.length = 0;
-  };
-
-  const onMetadata = () => {
-    const scale = isLandscape(aspectRatio)
-      ? window.innerHeight / preview.videoHeight
-      : window.innerWidth / preview.videoWidth;
-    const docPreview = async () => {
-      let quad: Quad | undefined;
-      const ts = performance.now();
-      const canDetect = !!cap && preview.videoWidth > 0 && modal.style.display == 'none' && reviewModal.style.display == 'none';
-      if (canDetect && !detecting) {
-        detecting = true;
-        try {
-          const bitmap = await cap!.grabFrame();
-          const data = await getData(bitmap, true, 720);
-          const found = await findDocument(data, true);
-          if (found) {
-            const sx = preview.videoWidth / data.width;
-            const sy = preview.videoHeight / data.height;
-            quad = {
-              a: { x: found.a.x * sx, y: found.a.y * sy },
-              b: { x: found.b.x * sx, y: found.b.y * sy },
-              c: { x: found.c.x * sx, y: found.c.y * sy },
-              d: { x: found.d.x * sx, y: found.d.y * sy }
-            };
-          }
-        } catch (err) {
-          console.error(err);
-        } finally {
-          detecting = false;
-        }
-      }
-      clearNewElems();
-      if (docPreviewTimeout != -1) {
-        if (quad) {
-          newElems = [
-            previewDoc.appendChild(line(quad.a, quad.b, scale)),
-            previewDoc.appendChild(line(quad.b, quad.c, scale)),
-            previewDoc.appendChild(line(quad.c, quad.d, scale)),
-            previewDoc.appendChild(line(quad.d, quad.a, scale))
-          ];
-        }
-        docPreviewTimeout = setTimeout(docPreview, Math.max(250 - performance.now() + ts, 0)) as unknown as number;
-      }
-    };
-    docPreviewTimeout = setTimeout(docPreview, 0) as unknown as number;
-  };
-  preview.addEventListener('loadedmetadata', onMetadata);
   preview.srcObject = stream;
   preview.play().catch(() => {});
 
@@ -898,12 +816,10 @@ const startStream = async (device?: string): Promise<StreamHandle> => {
       shutterFlash();
       try {
         const photo = await takePhoto();
-        const confirmed = await processPhotos([photo]);
-        if (confirmed) {
-          pages.push(...confirmed);
-          updatePagesUI();
-          showToast(`已添加第 ${pages.length} 页`);
-        }
+        const page = await preprocessPhoto(photo);
+        pages.push(page);
+        updatePagesUI();
+        showToast(`已添加第 ${pages.length} 页`);
       } catch (err) {
         console.error(err);
         showToast(err instanceof Error ? err.message : '拍照失败，请重试');
@@ -933,16 +849,12 @@ const startStream = async (device?: string): Promise<StreamHandle> => {
   return {
     deviceId: settings.deviceId || device || '',
     close() {
-      clearTimeout(docPreviewTimeout);
-      docPreviewTimeout = -1;
       offResize();
       shutter.removeEventListener('click', onShutterClick);
       flash.removeEventListener('click', onFlashClick);
       quality.removeEventListener('click', onQualityClick);
-      preview.removeEventListener('loadedmetadata', onMetadata);
       preview.pause();
       preview.srcObject = null;
-      clearNewElems();
       for (const track of stream.getTracks()) {
         track.stop();
       }
@@ -1035,16 +947,27 @@ const onLoad = async () => {
     upload.value = '';
     if (!files.length) return;
     shutter.style.opacity = '0.5';
+    let added = 0;
+    let failed = 0;
     try {
-      const confirmed = await processPhotos(files);
-      if (confirmed) {
-        pages.push(...confirmed);
-        updatePagesUI();
-        showToast(`已添加 ${confirmed.length} 页`);
+      for (const file of files) {
+        try {
+          const page = await preprocessPhoto(file);
+          pages.push(page);
+          added++;
+          updatePagesUI();
+        } catch (err) {
+          console.error(err);
+          failed++;
+        }
       }
-    } catch (err) {
-      console.error(err);
-      showToast('导入失败，请重试');
+      if (added && failed) {
+        showToast(`已添加 ${added} 页，${failed} 张失败`);
+      } else if (added) {
+        showToast(`已添加 ${added} 页`);
+      } else {
+        showToast('导入失败，请重试');
+      }
     } finally {
       shutter.style.opacity = '';
     }
@@ -1065,11 +988,28 @@ cameraLibrary.onclick = () => {
   location.href = './library.html';
 };
 reviewClose.onclick = closeReview;
-reviewContinue.onclick = closeReview;
+reviewEdit.onclick = () => editPage(reviewIndex);
+reviewDelete.onclick = () => deletePage(reviewIndex);
+reviewMoveUp.onclick = () => movePage(reviewIndex, -1);
+reviewMoveDown.onclick = () => movePage(reviewIndex, 1);
 reviewGenerate.onclick = generatePDF;
-reviewModal.onclick = (event) => {
-  if (event.target === reviewModal && !generating) closeReview();
-};
+reviewPrev.onclick = () => showPage(-1);
+reviewNext.onclick = () => showPage(1);
+let touchStartX = 0;
+let touchStartY = 0;
+reviewImage.addEventListener('touchstart', (event) => {
+  if (event.touches.length !== 1) return;
+  touchStartX = event.touches[0].clientX;
+  touchStartY = event.touches[0].clientY;
+}, { passive: true });
+reviewImage.addEventListener('touchend', (event) => {
+  const touch = event.changedTouches[0];
+  if (!touch) return;
+  const dx = touch.clientX - touchStartX;
+  const dy = touch.clientY - touchStartY;
+  if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
+  showPage(dx < 0 ? 1 : -1);
+}, { passive: true });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'hidden') {
     if (currentStream) stopCamera(false);

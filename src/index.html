@@ -237,135 +237,132 @@
             position: fixed;
             inset: 0;
             z-index: 15;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
             flex-direction: column;
             background: #0b0f14;
             color: #fff;
         }
         .review-head {
+            flex: 0 0 auto;
             display: flex;
+            align-items: center;
             justify-content: space-between;
-            align-items: flex-start;
-            gap: 12px;
-            padding: calc(16px + env(safe-area-inset-top)) 16px 16px;
+            gap: 8px;
+            padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
             border-bottom: 1px solid #263241;
         }
-        .review-title {
-            font-size: 18px;
-            font-weight: 700;
-        }
-        .review-hint {
-            margin-top: 4px;
-            color: #94a3b8;
-            font-size: 12px;
-            line-height: 1.4;
-        }
-        .review-close {
-            padding: 7px 10px;
-            border: 1px solid #263241;
-            border-radius: 8px;
-            background: transparent;
-            color: #ccc;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        .review-status {
-            min-height: 18px;
-            padding: 8px 16px 0;
-            color: #93c5fd;
-            font-size: 13px;
-        }
-        .review-list {
-            flex: 1;
-            overflow: auto;
-            display: grid;
-            gap: 12px;
-            padding: 16px;
-        }
-        .review-empty {
-            padding: 32px 12px;
-            color: #94a3b8;
-            font-size: 14px;
-            text-align: center;
-        }
-        .review-page {
+        .review-head-left {
             display: flex;
-            gap: 12px;
             align-items: center;
-            padding: 10px;
-            border: 1px solid #263241;
-            border-radius: 12px;
-            background: #111820;
-        }
-        .review-thumb {
-            flex: 0 0 auto;
-            width: 84px;
-            height: 112px;
-            padding: 0;
-            border: 0;
-            border-radius: 8px;
-            overflow: hidden;
-            background: #0b0f14;
-            cursor: pointer;
-        }
-        .review-thumb canvas,
-        .review-thumb img {
-            display: block;
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-        }
-        .review-page-main {
-            flex: 1;
+            gap: 6px;
             min-width: 0;
         }
-        .review-page-title {
-            font-size: 14px;
-            font-weight: 600;
-        }
-        .review-page-meta {
-            margin-top: 4px;
-            color: #94a3b8;
-            font-size: 12px;
-        }
-        .review-page-actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 8px;
-        }
         .review-btn {
-            padding: 7px 10px;
+            flex: 0 0 auto;
+            padding: 8px 10px;
             border: 1px solid #263241;
             border-radius: 8px;
             background: #0f151c;
             color: #e5e7eb;
-            font-size: 12px;
+            font-size: 13px;
+            line-height: 1;
+            white-space: nowrap;
             cursor: pointer;
         }
         .review-btn:disabled {
-            opacity: .5;
+            opacity: .45;
             cursor: default;
         }
         .review-btn.danger {
             color: #f87171;
         }
-        .review-actions {
-            display: flex;
-            gap: 10px;
-            padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-            border-top: 1px solid #263241;
-            background: #0b0f14;
-        }
-        .review-actions .review-btn {
-            flex: 1;
-            padding: 12px;
-            font-size: 15px;
-            font-weight: 700;
-        }
-        .review-actions .primary {
+        .review-btn.primary {
             border-color: #fff;
             background: #fff;
             color: #000;
+            font-weight: 700;
+        }
+        .review-status {
+            flex: 0 0 auto;
+            min-height: 18px;
+            padding: 6px 16px 0;
+            color: #93c5fd;
+            font-size: 13px;
+        }
+        .review-stage {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            padding: 8px 42px;
+            touch-action: pan-y;
+        }
+        .review-image {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            touch-action: pan-y;
+        }
+        .review-image canvas {
+            display: block;
+            max-width: 100%;
+            max-height: 100%;
+            width: auto;
+            height: auto;
+            background: #fff;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, .45);
+        }
+        .review-arrow {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 2;
+            width: 34px;
+            height: 64px;
+            padding: 0;
+            border: 0;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, .08);
+            color: #fff;
+            font-size: 30px;
+            line-height: 1;
+            cursor: pointer;
+        }
+        .review-arrow:disabled {
+            opacity: .2;
+            cursor: default;
+        }
+        .review-prev {
+            left: 4px;
+        }
+        .review-next {
+            right: 4px;
+        }
+        .review-footer {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px 16px calc(12px + env(safe-area-inset-bottom));
+            border-top: 1px solid #263241;
+            background: #0b0f14;
+        }
+        .review-counter {
+            flex: 1;
+            text-align: center;
+            color: #cbd5e1;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
         }
     </style>
 </head>
@@ -408,7 +405,7 @@
             </div>
             <img id="shutter" style="cursor: pointer; height: 5vh;" src="camera.svg"></img>
             <div id="done-wrapper" class="done-wrapper">
-                <button id="done" class="done-btn" type="button" disabled>生成 PDF · 0 页</button>
+                <button id="done" class="done-btn" type="button" disabled>预览 PDF</button>
             </div>
         </div>
     </div>
@@ -456,17 +453,23 @@
     </div>
     <div id="review-modal" class="review-modal">
         <div class="review-head">
-            <div>
-                <div class="review-title">已拍摄 <span id="review-count">0</span> 页</div>
-                <div class="review-hint">点击缩略图可重新调四角，或调整顺序/删除</div>
+            <div class="review-head-left">
+                <button id="review-close" class="review-btn" type="button">关闭</button>
+                <button id="review-edit" class="review-btn" type="button">调四角</button>
+                <button id="review-delete" class="review-btn danger" type="button">删除本页</button>
             </div>
-            <button id="review-close" class="review-close" type="button">关闭</button>
+            <button id="review-generate" class="review-btn primary" type="button">生成 PDF</button>
         </div>
         <div id="review-status" class="review-status"></div>
-        <div id="review-list" class="review-list"></div>
-        <div class="review-actions">
-            <button id="review-continue" class="review-btn" type="button">继续拍摄</button>
-            <button id="review-generate" class="review-btn primary" type="button">生成 PDF</button>
+        <div class="review-stage">
+            <button id="review-prev" class="review-arrow review-prev" type="button" aria-label="上一页">‹</button>
+            <div id="review-image" class="review-image"></div>
+            <button id="review-next" class="review-arrow review-next" type="button" aria-label="下一页">›</button>
+        </div>
+        <div class="review-footer">
+            <button id="review-move-up" class="review-btn" type="button">上移</button>
+            <div id="review-counter" class="review-counter">第 1 / 1 页</div>
+            <button id="review-move-down" class="review-btn" type="button">下移</button>
         </div>
     </div>
     <div id="toast" class="toast"></div>
