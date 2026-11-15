@@ -2,12 +2,16 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#0b0f14">
     <title>我的扫描 · 资料库</title>
     <style>
         :root {
             color-scheme: dark;
+            --safe-top: env(safe-area-inset-top, 0px);
+            --safe-right: env(safe-area-inset-right, 0px);
+            --safe-bottom: env(safe-area-inset-bottom, 0px);
+            --safe-left: env(safe-area-inset-left, 0px);
             --bg: #0b0f14;
             --panel: #111820;
             --panel-2: #0f151c;
@@ -40,7 +44,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 16px;
-            padding: 14px clamp(16px, 4vw, 40px);
+            padding: calc(14px + var(--safe-top)) calc(clamp(16px, 4vw, 40px) + var(--safe-right)) 14px calc(clamp(16px, 4vw, 40px) + var(--safe-left));
             border-bottom: 1px solid rgba(38, 50, 65, .7);
             background: rgba(11, 15, 20, .82);
             backdrop-filter: blur(14px);
@@ -113,7 +117,7 @@
         .container {
             width: min(920px, 100%);
             margin: 0 auto;
-            padding: clamp(20px, 5vw, 48px) clamp(16px, 4vw, 40px) 64px;
+            padding: clamp(20px, 5vw, 48px) calc(clamp(16px, 4vw, 40px) + var(--safe-right)) calc(64px + var(--safe-bottom)) calc(clamp(16px, 4vw, 40px) + var(--safe-left));
         }
         .card {
             width: min(420px, 100%);
@@ -267,7 +271,7 @@
         .toast {
             position: fixed;
             left: 50%;
-            bottom: 24px;
+            bottom: calc(24px + var(--safe-bottom));
             z-index: 30;
             max-width: calc(100vw - 32px);
             padding: 10px 16px;
@@ -281,6 +285,47 @@
             pointer-events: none;
             transform: translateX(-50%);
             transition: opacity .2s;
+        }
+        .confirm-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 40;
+            align-items: center;
+            justify-content: center;
+            padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+            background: rgba(0, 0, 0, .68);
+        }
+        .confirm-modal.open {
+            display: flex;
+        }
+        .confirm-card {
+            width: min(360px, 100%);
+            padding: 20px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--panel);
+            box-shadow: 0 24px 80px rgba(0, 0, 0, .5);
+        }
+        .confirm-title {
+            font-size: 18px;
+            font-weight: 700;
+        }
+        .confirm-message {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 14px;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .confirm-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        .confirm-actions .btn {
+            min-width: 80px;
         }
         @media (max-width: 640px) {
             .topbar {
@@ -353,6 +398,16 @@
     <footer class="footer">
         基于 <a href="https://github.com/101arrowz/scanner" target="_blank" rel="noopener noreferrer">101arrowz/scanner</a> · MIT
     </footer>
+    <div id="confirm-modal" class="confirm-modal">
+        <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div id="confirm-title" class="confirm-title">确认删除</div>
+            <div id="confirm-message" class="confirm-message"></div>
+            <div class="confirm-actions">
+                <button id="confirm-cancel" class="btn" type="button">取消</button>
+                <button id="confirm-ok" class="btn danger" type="button">删除</button>
+            </div>
+        </div>
+    </div>
     <div id="toast" class="toast"></div>
     <script type="module" src="library.ts"></script>
 </body>

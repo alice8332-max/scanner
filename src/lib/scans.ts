@@ -63,6 +63,16 @@ export const downloadScan = async (record: ScanRecord): Promise<Blob> => {
   return data;
 };
 
+export const getScanDownloadUrl = async (record: ScanRecord): Promise<string> => {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from(BUCKET).createSignedUrl(record.path, 60, {
+    download: record.name
+  });
+  if (error) throw error;
+  if (!data?.signedUrl) throw new Error('无法生成下载链接');
+  return data.signedUrl;
+};
+
 export const deleteScan = async (id: string) => {
   const client = requireSupabase();
   const { error } = await client.rpc('delete_scan', { scan_id: id });

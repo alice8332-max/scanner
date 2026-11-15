@@ -1,10 +1,11 @@
 import type { Session } from '@supabase/supabase-js';
 import { CONFIG_ERROR, isSupabaseConfigured } from './lib/config';
 import { getSession, onAuthChange, signIn, signOut } from './lib/auth';
+import { openDownloadUrl } from './io';
 import {
   deleteScan,
-  downloadScan,
   formatBytes,
+  getScanDownloadUrl,
   listScans,
   type ScanRecord
 } from './lib/scans';
@@ -26,10 +27,15 @@ const libraryMeta = document.getElementById('library-meta') as HTMLParagraphElem
 const refresh = document.getElementById('refresh') as HTMLButtonElement;
 const signout = document.getElementById('signout') as HTMLButtonElement;
 const toast = document.getElementById('toast') as HTMLDivElement;
+const confirmModal = document.getElementById('confirm-modal') as HTMLDivElement;
+const confirmMessage = document.getElementById('confirm-message') as HTMLDivElement;
+const confirmCancel = document.getElementById('confirm-cancel') as HTMLButtonElement;
+const confirmOk = document.getElementById('confirm-ok') as HTMLButtonElement;
 
 let toastTimer = -1;
 let currentUserId: string | null = null;
 let loadRequest = 0;
+let confirmResolver: ((value: boolean) => void) | null = null;
 
 const showToast = (message: string) => {
   toast.textContent = message;
@@ -39,6 +45,31 @@ const showToast = (message: string) => {
     toast.style.opacity = '0';
   }, 2600) as unknown as number;
 };
+
+const settleConfirm = (value: boolean) => {
+  confirmModal.classList.remove('open');
+  const resolve = confirmResolver;
+  confirmResolver = null;
+  resolve?.(value);
+};
+
+const askConfirm = (message: string) => new Promise<boolean>((resolve) => {
+  confirmMessage.textContent = message;
+  confirmModal.classList.add('open');
+  confirmResolver = resolve;
+  confirmOk.focus();
+});
+
+confirmCancel.onclick = () => settleConfirm(false);
+confirmOk.onclick = () => settleConfirm(true);
+confirmModal.onclick = (event) => {
+  if (event.target === confirmModal) settleConfirm(false);
+};
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && confirmModal.classList.contains('open')) {
+    settleConfirm(false);
+  }
+});
 
 const showView = (view: 'boot' | 'login' | 'library') => {
   boot.classList.toggle('hidden', view !== 'boot');
@@ -90,16 +121,9 @@ const createItem = (record: ScanRecord) => {
     downloadButton.disabled = true;
     downloadButton.textContent = '下载中…';
     try {
-      const blob = await downloadScan(record);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = record.name;
-      link.rel = 'noopener';
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const url = await getScanDownloadUrl(record);
+      openDownloadUrl(url);
+      showToast('已开始下载');
     } catch (err) {
       showToast(err instanceof Error ? err.message : '下载失败');
     } finally {
@@ -113,7 +137,8 @@ const createItem = (record: ScanRecord) => {
   deleteButton.className = 'btn small danger';
   deleteButton.textContent = '删除';
   deleteButton.onclick = async () => {
-    if (!window.confirm(`确定删除「${record.name}」？此操作不可恢复。`)) return;
+    const confirmed = await askConfirm(`确定删除「${record.name}」？此操作不可恢复。`);
+    if (!confirmed) return;
     deleteButton.disabled = true;
     deleteButton.textContent = '删除中…';
     try {
@@ -168,6 +193,15 @@ const loadLibrary = async () => {
     if (request === loadRequest) refresh.disabled = false;
   }
 };
+
+const refreshIfVisible = () => {
+  if (!currentUserId || document.visibilityState !== 'visible') return;
+  if (confirmModal.classList.contains('open')) return;
+  loadLibrary();
+};
+
+document.addEventListener('visibilitychange', refreshIfVisible);
+window.addEventListener('focus', refreshIfVisible);
 
 const handleSession = (session: Session | null) => {
   const nextUserId = session?.user.id ?? null;

@@ -52,3 +52,39 @@ export const download = (file: Blob, name: string) => {
   el.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+export const openDownloadUrl = (url: string) => {
+  const el = document.createElement('a');
+  el.href = url;
+  el.rel = 'noopener';
+  document.body.appendChild(el);
+  el.click();
+  el.remove();
+}
+
+type ShareNavigator = Navigator & {
+  share?: (data: { files: File[]; title?: string; text?: string }) => Promise<void>;
+  canShare?: (data?: { files?: File[] }) => boolean;
+};
+
+export type ShareResult = 'shared' | 'cancelled' | 'unsupported';
+
+export const shareBlob = async (file: Blob, name: string): Promise<ShareResult> => {
+  const nav = navigator as ShareNavigator;
+  if (typeof nav.share !== 'function') return 'unsupported';
+  const shareFile = new File([file], name, { type: file.type || 'application/pdf' });
+  if (typeof nav.canShare === 'function') {
+    try {
+      if (!nav.canShare({ files: [shareFile] })) return 'unsupported';
+    } catch {
+      return 'unsupported';
+    }
+  }
+  try {
+    await nav.share({ files: [shareFile], title: name });
+    return 'shared';
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') return 'cancelled';
+    throw err;
+  }
+}

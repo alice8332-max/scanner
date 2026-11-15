@@ -1,9 +1,9 @@
 import { extractDocument, Point, Quad } from './process';
 import { toPDF } from './pdf';
-import { toImage, getData, download } from './io';
+import { toImage, getData, download, openDownloadUrl, shareBlob } from './io';
 import { ProspectivePage, getFile, setFile } from './db';
 import { getSession, onAuthChange, signIn, signOut } from './lib/auth';
-import { uploadScan } from './lib/scans';
+import { getScanDownloadUrl, uploadScan } from './lib/scans';
 import { CONFIG_ERROR, isSupabaseConfigured } from './lib/config';
 import type { Session } from '@supabase/supabase-js';
 import flashURL from 'url:./flash.svg';
@@ -65,6 +65,13 @@ const reviewDelete = document.getElementById('review-delete') as HTMLButtonEleme
 const reviewMoveUp = document.getElementById('review-move-up') as HTMLButtonElement;
 const reviewMoveDown = document.getElementById('review-move-down') as HTMLButtonElement;
 const reviewGenerate = document.getElementById('review-generate') as HTMLButtonElement;
+const resultModal = document.getElementById('result-modal') as HTMLDivElement;
+const resultTitle = document.getElementById('result-title') as HTMLDivElement;
+const resultMessage = document.getElementById('result-message') as HTMLDivElement;
+const resultSave = document.getElementById('result-save') as HTMLButtonElement;
+const resultRetry = document.getElementById('result-retry') as HTMLButtonElement;
+const resultLibrary = document.getElementById('result-library') as HTMLButtonElement;
+const resultClose = document.getElementById('result-close') as HTMLButtonElement;
 const modalBottomWrapper = document.getElementById('modal-bottom-wrapper') as HTMLDivElement;
 const modalCancelWrapper = document.getElementById('modal-cancel-wrapper') as HTMLDivElement;
 const modalCancel = document.getElementById('modal-cancel') as HTMLButtonElement;
@@ -89,6 +96,92 @@ const showToast = (message: string) => {
   toastTimer = setTimeout(() => {
     toast.style.opacity = '0';
   }, 2600) as unknown as number;
+};
+
+type PendingPdf = {
+  blob: Blob;
+  name: string;
+};
+
+let pendingPdf: PendingPdf | null = null;
+let resultBusy = false;
+
+const hideResult = () => {
+  resultModal.style.display = 'none';
+};
+
+const showResult = (
+  title: string,
+  message: string,
+  options: { canSave: boolean; canRetry: boolean; canLibrary: boolean }
+) => {
+  resultTitle.textContent = title;
+  resultMessage.textContent = message;
+  resultSave.style.display = options.canSave ? '' : 'none';
+  resultRetry.style.display = options.canRetry ? '' : 'none';
+  resultLibrary.style.display = options.canLibrary ? '' : 'none';
+  resultModal.style.display = 'flex';
+};
+
+const savePendingPdf = async () => {
+  if (!pendingPdf || resultBusy) return;
+  resultBusy = true;
+  resultSave.disabled = true;
+  resultSave.textContent = '正在打开…';
+  try {
+    const result = await shareBlob(pendingPdf.blob, pendingPdf.name);
+    if (result === 'shared') {
+      showToast('已打开分享面板');
+      hideResult();
+    } else if (result === 'cancelled') {
+      showToast('已取消保存');
+    } else {
+      download(pendingPdf.blob, pendingPdf.name);
+      showToast('已开始下载');
+      hideResult();
+    }
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : '保存失败');
+  } finally {
+    resultBusy = false;
+    resultSave.disabled = false;
+    resultSave.textContent = '保存到手机';
+  }
+};
+
+const uploadPendingPdf = async () => {
+  if (!pendingPdf || resultBusy) return;
+  const pdf = pendingPdf;
+  resultBusy = true;
+  resultRetry.disabled = true;
+  resultRetry.textContent = '上传中…';
+  try {
+    showToast('正在上传到资料库…');
+    const record = await uploadScan(pdf.blob, pdf.name);
+    pendingPdf = null;
+    hideResult();
+    try {
+      const url = await getScanDownloadUrl(record);
+      openDownloadUrl(url);
+      showToast('已上传到资料库，正在下载');
+    } catch (err) {
+      console.error(err);
+      showToast('已上传到资料库，请从资料库下载');
+    }
+  } catch (err) {
+    console.error(err);
+    const message = err instanceof Error ? err.message : '上传失败';
+    showToast(`上传失败：${message}`);
+    showResult('上传失败', `PDF 已生成，但没有上传到资料库。${message}`, {
+      canSave: true,
+      canRetry: true,
+      canLibrary: true
+    });
+  } finally {
+    resultBusy = false;
+    resultRetry.disabled = false;
+    resultRetry.textContent = '重试上传';
+  }
 };
 
 const quadMaxSide = (quad: Quad) => {
@@ -409,7 +502,9 @@ const processPhotos = async (srcs: (Blob | ImageBitmap | Page)[]): Promise<Page[
       ];
     };
     const updateImageDimensions = () => {
-      const { width, height } = isFirst ? calcDimensions(aspectRatio, 0.925) : firstDimensions;
+      const { width, height } = isFirst
+        ? calcDimensions(aspectRatio, 0.925, window.innerWidth, window.innerHeight)
+        : firstDimensions;
       if (isFirst) {
         landscape = isLandscape(aspectRatio);
         firstDimensions = { width, height };
@@ -478,12 +573,21 @@ const processPhotos = async (srcs: (Blob | ImageBitmap | Page)[]): Promise<Page[
 
 const isLandscape = (aspectRatio: number) => window.innerWidth > (window.innerHeight * aspectRatio);
 
-const calcDimensions = (aspectRatio: number, maxRatio: number) => {
-  const landscape = isLandscape(aspectRatio);
-  const height = landscape ? window.innerHeight : Math.floor(Math.min(window.innerWidth * aspectRatio, window.innerHeight * maxRatio));
-  const width = landscape ? Math.floor(Math.min(window.innerHeight * aspectRatio, window.innerWidth * maxRatio)) : window.innerWidth;
+const calcDimensions = (
+  aspectRatio: number,
+  maxRatio: number,
+  availableWidth: number,
+  availableHeight: number
+) => {
+  const landscape = availableWidth > availableHeight * aspectRatio;
+  const height = landscape
+    ? availableHeight
+    : Math.floor(Math.min(availableWidth * aspectRatio, availableHeight * maxRatio));
+  const width = landscape
+    ? Math.floor(Math.min(availableHeight * aspectRatio, availableWidth * maxRatio))
+    : availableWidth;
   return { width, height };
-}
+};
 
 const sideWrappers = [topWrapper, bottomWrapper];
 const topElems = [cameraCloseWrapper, flashWrapper, qualityWrapper, accountWrapper, selectWrapper, pastWrapper];
@@ -648,26 +752,35 @@ const generatePDF = async () => {
     const pdfBytes = await toPDF(extracted);
     const blob = new Blob([pdfBytes], { type: 'application/pdf' });
     const name = makeScanName();
-    download(blob, name);
+    pendingPdf = { blob, name };
     closeReview();
     pages.length = 0;
     updatePagesUI();
-    showToast('已保存，正在上传…');
+
+    let session: Session | null = null;
+    let sessionError = '';
     if (isSupabaseConfigured) {
       try {
-        const session = await getSession();
-        if (session) {
-          await uploadScan(blob, name);
-          showToast('已上传到资料库');
-        } else {
-          showToast('未登录，已保存到本地');
-        }
+        session = await getSession();
       } catch (err) {
         console.error(err);
-        showToast('上传失败，已保存到本地');
+        sessionError = err instanceof Error ? err.message : '读取登录状态失败';
       }
+    }
+
+    if (session) {
+      await uploadPendingPdf();
     } else {
-      showToast('Supabase 未配置，已保存到本地');
+      showResult(
+        'PDF 已生成',
+        sessionError
+          ? `读取登录状态失败：${sessionError}。可以先把 PDF 保存到手机。`
+          : isSupabaseConfigured
+            ? '未登录，未上传到资料库。可以先把 PDF 保存到手机，登录后可再生成并上传。'
+            : 'Supabase 未配置，未上传到资料库。可以先把 PDF 保存到手机。',
+        { canSave: true, canRetry: false, canLibrary: true }
+      );
+      showToast('PDF 已生成，请保存到手机');
     }
   } catch (err) {
     console.error(err);
@@ -709,8 +822,16 @@ const startStream = async (device?: string): Promise<StreamHandle> => {
   const aspectRatio = Math.max(settingsWidth, settingsHeight) / Math.min(settingsWidth, settingsHeight);
 
   const applyLayout = () => {
-    const landscape = isLandscape(aspectRatio);
-    const { width, height } = calcDimensions(aspectRatio, 0.84);
+    const safeStyle = getComputedStyle(root);
+    const safeTop = parseFloat(safeStyle.paddingTop) || 0;
+    const safeRight = parseFloat(safeStyle.paddingRight) || 0;
+    const safeBottom = parseFloat(safeStyle.paddingBottom) || 0;
+    const safeLeft = parseFloat(safeStyle.paddingLeft) || 0;
+    const availableWidth = Math.max(1, window.innerWidth - safeLeft - safeRight);
+    const availableHeight = Math.max(1, window.innerHeight - safeTop - safeBottom);
+    const landscape = availableWidth > availableHeight * aspectRatio;
+    const baseSize = landscape ? availableWidth : availableHeight;
+    const { width, height } = calcDimensions(aspectRatio, 0.84, availableWidth, availableHeight);
     const cssHeight = height + 'px';
     const cssWidth = width + 'px';
     previewCrop.style.width = previewCrop.style.minWidth = cssWidth;
@@ -720,26 +841,26 @@ const startStream = async (device?: string): Promise<StreamHandle> => {
     for (const sideWrapper of sideWrappers) {
       if (landscape) {
         sideWrapper.style.flexDirection = 'column';
-        sideWrapper.style.height = window.innerHeight + 'px';
+        sideWrapper.style.height = availableHeight + 'px';
         sideWrapper.style.width = '';
       } else {
         sideWrapper.style.flexDirection = 'row';
         sideWrapper.style.height = '';
-        sideWrapper.style.width = window.innerWidth + 'px';
+        sideWrapper.style.width = availableWidth + 'px';
       }
     }
     for (const topElem of topElems) {
-      topElem.style.width = topElem.style.height = (landscape ? window.innerWidth : window.innerHeight) * 0.03 + 'px';
+      topElem.style.width = topElem.style.height = baseSize * 0.03 + 'px';
     }
     for (const bottomElem of bottomElems) {
-      bottomElem.style.width = bottomElem.style.height = (landscape ? window.innerWidth : window.innerHeight) * 0.035 + 'px';
+      bottomElem.style.width = bottomElem.style.height = baseSize * 0.035 + 'px';
     }
     for (const elem of allElems) {
-      elem.style.margin = (landscape ? window.innerWidth : window.innerHeight) * 0.02 + 'px';
+      elem.style.margin = baseSize * 0.02 + 'px';
     }
-    shutter.style.width = shutter.style.height = (landscape ? window.innerWidth : window.innerHeight) * 0.05 + 'px';
-    doneWrapper.style.height = (landscape ? window.innerWidth : window.innerHeight) * 0.035 + 'px';
-    const pastBorderSize = (landscape ? window.innerWidth : window.innerHeight) * 0.002 + 'px';
+    shutter.style.width = shutter.style.height = baseSize * 0.05 + 'px';
+    doneWrapper.style.height = baseSize * 0.035 + 'px';
+    const pastBorderSize = baseSize * 0.002 + 'px';
     pastWrapper.style.borderRadius = pastBorderSize;
     pastWrapper.style.border = pastBorderSize + ' solid white';
     if (landscape) {
@@ -995,6 +1116,16 @@ reviewMoveDown.onclick = () => movePage(reviewIndex, 1);
 reviewGenerate.onclick = generatePDF;
 reviewPrev.onclick = () => showPage(-1);
 reviewNext.onclick = () => showPage(1);
+resultSave.onclick = savePendingPdf;
+resultRetry.onclick = uploadPendingPdf;
+resultLibrary.onclick = () => {
+  hideResult();
+  location.href = './library.html';
+};
+resultClose.onclick = () => {
+  pendingPdf = null;
+  hideResult();
+};
 let touchStartX = 0;
 let touchStartY = 0;
 reviewImage.addEventListener('touchstart', (event) => {
