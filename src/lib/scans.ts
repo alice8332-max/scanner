@@ -73,10 +73,26 @@ export const getScanDownloadUrl = async (record: ScanRecord): Promise<string> =>
   return data.signedUrl;
 };
 
-export const deleteScan = async (id: string) => {
+export const deleteScan = async (record: ScanRecord) => {
   const client = requireSupabase();
-  const { error } = await client.rpc('delete_scan', { scan_id: id });
-  if (error) throw error;
+  const { error: storageError } = await client.storage.from(BUCKET).remove([record.path]);
+  const missingObject = !!storageError && (
+    String(storageError.statusCode) === '404' || /not found|does not exist/i.test(storageError.message || '')
+  );
+  if (storageError && !missingObject) {
+    console.warn('删除 Storage 文件失败，继续删除数据库记录', storageError);
+  }
+
+  const { data, error } = await client
+    .from('scans')
+    .delete()
+    .eq('id', record.id)
+    .select('id');
+
+  if (error) throw new Error(error.message || '删除记录失败');
+  if (!data?.length) throw new Error('记录未删除，请刷新后重试');
+
+  return { storageWarning: !!storageError && !missingObject };
 };
 
 export const formatBytes = (bytes: number) => {

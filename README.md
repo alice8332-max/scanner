@@ -16,7 +16,7 @@
 - 已登录时先生成 PDF 并上传到 Supabase，再用附件链接保存到手机；未登录时可直接保存到手机
 - 邮箱 + 密码登录，登录状态默认保持
 - 电脑资料库：列表、附件下载、页面内确认删除、用量统计；回到页面自动刷新
-- 删除通过 `delete_scan` RPC 原子删除 Storage 文件和数据库记录
+- 删除时先通过 Storage API 删除文件，再删除数据库记录；文件已不存在时仍可清理记录
 - 适配 iPhone 刘海/灵动岛/底部 Home 指示条安全区
 - PWA：可添加到 iPhone 主屏幕
 - 手机 `/` 为相机页；电脑 `/` 自动跳转 `/library.html`，`/?camera=1` 强制进入相机页
@@ -205,8 +205,9 @@ npm run build        # 类型检查 + 生产构建
 - 生成后若提示上传失败，可点“重试上传”，或先把 PDF 保存到手机。
 
 **删除失败**
-- 确认 `delete_scan` RPC 已创建，并授予 `authenticated` 执行权限。
-- 删除使用页面内确认框；如果确认后仍失败，会显示具体错误提示。
+- 删除时先通过 Storage API 删除文件，再删除 `public.scans` 记录；不要用 SQL 直接删 `storage.objects`，Supabase 会拦截。
+- 如果文件之前已经手动删除，仍可在资料库点删除来清理记录。
+- 删除使用页面内确认框；失败时会显示具体错误。若提示“文件可能未清理”，可稍后重试或到 Storage 手动删除残留文件。
 
 **GitHub Actions 失败**
 - 打开仓库 **Actions** → 点进红色失败的 **Deploy to GitHub Pages** → 展开红色步骤，把报错日志发我。
@@ -239,7 +240,7 @@ src/
     auth.ts         登录、登出、会话
     scans.ts        上传、列表、下载、删除
 supabase/
-  schema.sql        表、RLS、Storage 策略、delete_scan RPC
+  schema.sql        表、RLS、Storage 策略、可选 delete_scan RPC
 .github/workflows/
   deploy.yml        GitHub Pages 构建与部署
 ```

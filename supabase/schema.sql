@@ -55,28 +55,22 @@ create policy scans_obj_delete_own on storage.objects
     and auth.uid()::text = (storage.foldername(name))[1]
   );
 
+-- Storage objects must be deleted through the Storage API, not by direct SQL.
+-- The client removes the file first, then deletes the scans row directly.
+-- This RPC is kept as an optional row-only helper and never touches storage.objects.
 create or replace function public.delete_scan(scan_id uuid)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
-declare
-  p text;
 begin
-  select path into p
-  from public.scans
-  where id = scan_id and user_id = auth.uid();
-
-  if p is null then
-    raise exception 'scan not found';
-  end if;
-
-  delete from storage.objects
-  where bucket_id = 'scans' and name = p;
-
   delete from public.scans
   where id = scan_id and user_id = auth.uid();
+
+  if not found then
+    raise exception 'scan not found';
+  end if;
 end;
 $$;
 

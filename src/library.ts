@@ -46,6 +46,15 @@ const showToast = (message: string) => {
   }, 2600) as unknown as number;
 };
 
+const getErrorMessage = (err: unknown, fallback: string) => {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === 'object' && 'message' in err) {
+    const message = (err as { message?: unknown }).message;
+    if (typeof message === 'string' && message) return message;
+  }
+  return fallback;
+};
+
 const settleConfirm = (value: boolean) => {
   confirmModal.classList.remove('open');
   const resolve = confirmResolver;
@@ -125,7 +134,7 @@ const createItem = (record: ScanRecord) => {
       openDownloadUrl(url);
       showToast('已开始下载');
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '下载失败');
+      showToast(getErrorMessage(err, '下载失败'));
     } finally {
       downloadButton.disabled = false;
       downloadButton.textContent = '下载';
@@ -142,12 +151,12 @@ const createItem = (record: ScanRecord) => {
     deleteButton.disabled = true;
     deleteButton.textContent = '删除中…';
     try {
-      await deleteScan(record.id);
-      showToast('已删除');
+      const result = await deleteScan(record);
+      showToast(result.storageWarning ? '记录已删除，但文件可能未清理' : '已删除');
       item.remove();
       await loadLibrary();
     } catch (err) {
-      showToast(err instanceof Error ? err.message : '删除失败');
+      showToast(getErrorMessage(err, '删除失败'));
       deleteButton.disabled = false;
       deleteButton.textContent = '删除';
     }
@@ -182,7 +191,7 @@ const loadLibrary = async () => {
     if (request === loadRequest) renderList(records);
   } catch (err) {
     if (request === loadRequest) {
-      listError.textContent = err instanceof Error ? err.message : '加载失败';
+      listError.textContent = getErrorMessage(err, '加载失败');
       listError.classList.remove('hidden');
       list.replaceChildren();
       empty.classList.add('hidden');
@@ -237,7 +246,7 @@ loginForm.onsubmit = async (event) => {
     handleSession(session);
     showToast('登录成功');
   } catch (err) {
-    loginError.textContent = err instanceof Error ? err.message : '登录失败';
+    loginError.textContent = getErrorMessage(err, '登录失败');
   } finally {
     loginSubmit.disabled = false;
     loginSubmit.textContent = '登录';
@@ -255,7 +264,7 @@ signout.onclick = async () => {
     handleSession(null);
     showToast('已退出登录');
   } catch (err) {
-    showToast(err instanceof Error ? err.message : '退出失败');
+    showToast(getErrorMessage(err, '退出失败'));
   } finally {
     signout.disabled = false;
   }
@@ -273,7 +282,7 @@ if (!isSupabaseConfigured) {
   getSession()
     .then(handleSession)
     .catch((err) => {
-      showToast(err instanceof Error ? err.message : '读取登录状态失败');
+      showToast(getErrorMessage(err, '读取登录状态失败'));
       handleSession(null);
     });
 }
