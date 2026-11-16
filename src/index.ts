@@ -105,6 +105,9 @@ type PendingPdf = {
 
 let pendingPdf: PendingPdf | null = null;
 let resultBusy = false;
+const isIOS =
+  /iP(hone|ad|od)/.test(navigator.userAgent) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
 const hideResult = () => {
   resultModal.style.display = 'none';
@@ -125,18 +128,23 @@ const showResult = (
 
 const savePendingPdf = async () => {
   if (!pendingPdf || resultBusy) return;
+  const pdf = pendingPdf;
   resultBusy = true;
   resultSave.disabled = true;
   resultSave.textContent = '正在打开…';
   try {
-    const result = await shareBlob(pendingPdf.blob, pendingPdf.name);
+    const result = await shareBlob(pdf.blob, pdf.name);
     if (result === 'shared') {
+      pendingPdf = null;
       showToast('已打开分享面板');
       hideResult();
     } else if (result === 'cancelled') {
       showToast('已取消保存');
+    } else if (isIOS) {
+      showToast('当前 Safari 不支持保存面板，请打开资料库下载');
     } else {
-      download(pendingPdf.blob, pendingPdf.name);
+      download(pdf.blob, pdf.name);
+      pendingPdf = null;
       showToast('已开始下载');
       hideResult();
     }
@@ -158,6 +166,15 @@ const uploadPendingPdf = async () => {
   try {
     showToast('正在上传到资料库…');
     const record = await uploadScan(pdf.blob, pdf.name);
+    if (isIOS) {
+      showResult(
+        '已上传到资料库',
+        'PDF 已上传。需要在手机保存一份时，点“保存到手机”，在分享面板里选“存储到文件”。',
+        { canSave: true, canRetry: false, canLibrary: true }
+      );
+      showToast('已上传到资料库');
+      return;
+    }
     pendingPdf = null;
     hideResult();
     try {
@@ -1119,6 +1136,7 @@ reviewNext.onclick = () => showPage(1);
 resultSave.onclick = savePendingPdf;
 resultRetry.onclick = uploadPendingPdf;
 resultLibrary.onclick = () => {
+  pendingPdf = null;
   hideResult();
   location.href = './library.html';
 };
